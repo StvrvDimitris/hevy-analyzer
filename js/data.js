@@ -47,11 +47,44 @@ export function hasImportedData() {
   return !!_data || !!readStoredValue(STORAGE_KEY);
 }
 
+export function getWorkoutTitleOptions(data) {
+  return [...new Set(data.map(row => getDisplayTitle(row.title)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+export function filterRows(data, filters = {}) {
+  const fromTime = filters.from ? startOfDayTimestamp(filters.from) : null;
+  const toTime = filters.to ? endOfDayTimestamp(filters.to) : null;
+  const title = filters.title || '';
+
+  return data.filter(row => {
+    const rowTime = row.start?.getTime() ?? null;
+
+    if (fromTime != null && (rowTime == null || rowTime < fromTime)) return false;
+    if (toTime != null && (rowTime == null || rowTime > toTime)) return false;
+    if (title && getDisplayTitle(row.title) !== title) return false;
+
+    return true;
+  });
+}
+
+export function getDisplayTitle(title) {
+  return title || 'Untitled';
+}
+
 export function renderDataState(container, title, message) {
   container.innerHTML = `
     <h1 class="page-title">${title}</h1>
     <div class="empty-state card">
       <h2>Import a Hevy CSV export</h2>
+      <p>${message}</p>
+    </div>
+  `;
+}
+
+export function renderNoResultsState(container, message) {
+  container.innerHTML = `
+    <div class="card empty-state empty-state-inline">
+      <h2>No results</h2>
       <p>${message}</p>
     </div>
   `;
@@ -109,6 +142,14 @@ function parseDate(str) {
   return new Date(+parts[3], months[parts[2]], +parts[1], +parts[4], +parts[5]);
 }
 
+function startOfDayTimestamp(value) {
+  return new Date(`${value}T00:00:00`).getTime();
+}
+
+function endOfDayTimestamp(value) {
+  return new Date(`${value}T23:59:59.999`).getTime();
+}
+
 export function getWorkouts(data) {
   const map = new Map();
   for (const row of data) {
@@ -116,7 +157,7 @@ export function getWorkouts(data) {
     if (key == null) continue;
     if (!map.has(key)) {
       map.set(key, {
-        title: row.title,
+        title: getDisplayTitle(row.title),
         start: row.start,
         end: row.end,
         exercises: new Set(),
@@ -220,8 +261,7 @@ export function getSplitDistribution(data) {
   const workouts = getWorkouts(data);
   const counts = {};
   for (const workout of workouts) {
-    const title = workout.title || 'Untitled';
-    counts[title] = (counts[title] || 0) + 1;
+    counts[workout.title] = (counts[workout.title] || 0) + 1;
   }
   return Object.entries(counts)
     .sort(([, a], [, b]) => b - a)

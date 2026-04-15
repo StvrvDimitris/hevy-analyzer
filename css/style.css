@@ -129,6 +129,12 @@ body {
   letter-spacing: -0.02em;
 }
 
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 /* Cards */
 .card {
   background: var(--bg-card);
@@ -242,6 +248,70 @@ input:focus, select:focus {
   width: 100%;
   max-width: 350px;
   margin-bottom: 1rem;
+}
+
+.filter-bar {
+  margin-bottom: 1.5rem;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.filter-field span {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+.button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.button-secondary {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.button-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hidden {
+  display: none;
+}
+
+.stat-value-small {
+  font-size: 1rem;
+}
+
+.empty-state-inline {
+  max-width: none;
+}
+
+.selected-row td {
+  background: var(--accent-glow);
 }
 
 .empty-state {
