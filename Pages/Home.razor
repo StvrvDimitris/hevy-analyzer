@@ -1,0 +1,138 @@
+@page "/"
+@inherits HevyPageBase<DashboardFilters>
+
+<PageTitle>Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Dashboard</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="From" Date="@Filters.From" DateChanged="OnFromChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="To" Date="@Filters.To" DateChanged="OnToChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end"><MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Total Workouts" Value="@HevyAnalytics.FormatNumber(_workouts.Count)" Subtitle="@_dateRange" /></MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Total Sets" Value="@HevyAnalytics.FormatNumber(_totalSets)" /></MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Total Volume" Value="@($"{HevyAnalytics.FormatNumber(_totalVolume)} kg")" /></MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Avg Duration" Value="@($"{Math.Round(_avgDuration)} min")" /></MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Unique Exercises" Value="@_exerciseCount.ToString()" /></MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2"><StatCard Label="Most Frequent" Value="@_topExercise" Subtitle="@_topExerciseSubtitle" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Split Distribution</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Split</th><th>Workouts</th></tr></thead>
+                    <tbody>
+                        @foreach (var split in _splits)
+                        {
+                            <tr><td>@split.Title</td><td>@split.Count</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Weekly Volume</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Week</th><th>Volume</th></tr></thead>
+                    <tbody>
+                        @foreach (var point in _weeklyVolume)
+                        {
+                            <tr><td>@point.Label</td><td>@HevyAnalytics.FormatNumber(point.Value) kg</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Recent Workouts</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>Date</th><th>Split</th><th>Exercises</th><th>Sets</th><th>Volume</th></tr></thead>
+            <tbody>
+                @foreach (var workout in _workouts.Take(10))
+                {
+                    <tr>
+                        <td>@workout.Start.ToShortDateString()</td>
+                        <td>@workout.Title</td>
+                        <td>@workout.Exercises.Count</td>
+                        <td>@workout.Sets</td>
+                        <td>@HevyAnalytics.FormatNumber(workout.TotalVolume) kg</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private IReadOnlyList<WorkoutSummary> _workouts = [];
+    private IReadOnlyList<VolumePoint> _weeklyVolume = [];
+    private IReadOnlyList<SplitCount> _splits = [];
+    private double _totalVolume;
+    private int _totalSets;
+    private double _avgDuration;
+    private int _exerciseCount;
+    private string _dateRange = string.Empty;
+    private string _topExercise = "-";
+    private string _topExerciseSubtitle = string.Empty;
+
+    protected override string StorageKey => "hevyAnalyzer.filters.dashboard";
+    protected override DashboardFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var rows = HevyAnalytics.FilterRows(AllRows, Filters);
+        _workouts = HevyAnalytics.GetWorkouts(rows);
+        _weeklyVolume = HevyAnalytics.GetWeeklyVolume(rows);
+        _splits = HevyAnalytics.GetSplitDistribution(rows);
+        var exercises = HevyAnalytics.GetExerciseStats(rows);
+
+        _totalSets = _workouts.Sum(item => item.Sets);
+        _totalVolume = _workouts.Sum(item => item.TotalVolume);
+        _avgDuration = _workouts.Count > 0 ? _workouts.Average(item => ((item.End ?? item.Start) - item.Start).TotalMinutes) : 0;
+        _exerciseCount = exercises.Count;
+        _topExercise = exercises.FirstOrDefault()?.Name ?? "-";
+        _topExerciseSubtitle = exercises.Count > 0 ? $"{exercises[0].SessionCount} sessions" : string.Empty;
+        _dateRange = _workouts.Count > 0 ? $"{_workouts[^1].Start:d} - {_workouts[0].Start:d}" : string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnFromChanged(DateTime? value) { Filters.From = value; await PersistAndReloadAsync(); }
+    private async Task OnToChanged(DateTime? value) { Filters.To = value; await PersistAndReloadAsync(); }
+    private async Task OnTitleChanged(string value) { Filters.Title = value; await PersistAndReloadAsync(); }
+}

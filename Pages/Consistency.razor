@@ -1,0 +1,115 @@
+@page "/consistency"
+@inherits HevyPageBase<DateTitleFilters>
+
+<PageTitle>Consistency</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Consistency</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="From" Date="@Filters.From" DateChanged="OnFromChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="To" Date="@Filters.To" DateChanged="OnToChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end"><MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="4"><StatCard Label="Current Streak" Value="@_streaks.CurrentStreak.ToString()" /></MudItem>
+        <MudItem xs="12" sm="4"><StatCard Label="Longest Streak" Value="@_streaks.LongestStreak.ToString()" /></MudItem>
+        <MudItem xs="12" sm="4"><StatCard Label="Active Days" Value="@_streaks.ActiveDays.ToString()" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Weekday Distribution</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Day</th><th>Workouts</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _weekdayDistribution)
+                        {
+                            <tr><td>@item.Label</td><td>@item.Count</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Start Time Distribution</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Hour</th><th>Workouts</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _hourDistribution.Where(item => item.Count > 0))
+                        {
+                            <tr><td>@($"{item.Hour:00}:00")</td><td>@item.Count</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Recent Activity</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>Date</th><th>Workouts</th></tr></thead>
+            <tbody>
+                @foreach (var item in _recentDays)
+                {
+                    <tr><td>@item.Key.ToShortDateString()</td><td>@item.Value</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private StreakSummary _streaks = new();
+    private IReadOnlyList<LabeledCount> _weekdayDistribution = [];
+    private IReadOnlyList<HourCount> _hourDistribution = [];
+    private IReadOnlyList<KeyValuePair<DateOnly, int>> _recentDays = [];
+
+    protected override string StorageKey => "hevyAnalyzer.filters.consistency";
+    protected override DateTitleFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var rows = HevyAnalytics.FilterRows(AllRows, Filters);
+        _streaks = HevyAnalytics.GetWorkoutStreaks(rows);
+        _weekdayDistribution = HevyAnalytics.GetWeekdayDistribution(rows);
+        _hourDistribution = HevyAnalytics.GetHourDistribution(rows);
+        _recentDays = HevyAnalytics.GetWorkoutDayCounts(rows).OrderByDescending(item => item.Key).Take(20).ToList();
+        return Task.CompletedTask;
+    }
+
+    private async Task OnFromChanged(DateTime? value) { Filters.From = value; await PersistAndReloadAsync(); }
+    private async Task OnToChanged(DateTime? value) { Filters.To = value; await PersistAndReloadAsync(); }
+    private async Task OnTitleChanged(string value) { Filters.Title = value; await PersistAndReloadAsync(); }
+}

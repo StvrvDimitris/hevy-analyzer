@@ -1,0 +1,135 @@
+@page "/strength"
+@inherits HevyPageBase<ExerciseSelectionFilters>
+
+<PageTitle>Strength</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Strength</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="From" Date="@Filters.From" DateChanged="OnFromChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="To" Date="@Filters.To" DateChanged="OnToChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="string" Label="Exercise" Value="@Filters.Exercise" ValueChanged="OnExerciseChanged">
+                    @foreach (var exercise in _exerciseOptions)
+                    {
+                        <MudSelectItem T="string" Value="@exercise">@exercise</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Exercise" Value="@Filters.Exercise" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Best Estimated 1RM" Value="@($"{HevyAnalytics.FormatNumber(_bestOneRm)} kg")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Tracked Sessions" Value="@_progress.Count.ToString()" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Current Peak" Value="@($"{HevyAnalytics.FormatNumber(_currentPeak)} kg")" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Rep Range Profile</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Range</th><th>Sets</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _repRanges)
+                        {
+                            <tr><td>@item.Label</td><td>@item.Count</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">RPE Calibration</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>RPE</th><th>Count</th><th>Avg Est. 1RM</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _rpeProfile)
+                        {
+                            <tr><td>@item.Rpe</td><td>@item.Count</td><td>@HevyAnalytics.FormatNumber(item.AverageEstimatedOneRepMax) kg</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Top Estimated 1RM Leaderboard</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>Exercise</th><th>Estimated 1RM</th><th>Best Set</th><th>Date</th></tr></thead>
+            <tbody>
+                @foreach (var item in _leaderboard)
+                {
+                    <tr><td>@item.Title</td><td>@HevyAnalytics.FormatNumber(item.EstimatedOneRepMax) kg</td><td>@HevyAnalytics.FormatNumber(item.Weight)kg x @item.Reps</td><td>@item.Date?.ToShortDateString()</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private IReadOnlyList<string> _exerciseOptions = [];
+    private IReadOnlyList<OneRepMaxProgressPoint> _progress = [];
+    private IReadOnlyList<LabeledCount> _repRanges = [];
+    private IReadOnlyList<RpeBucket> _rpeProfile = [];
+    private IReadOnlyList<SetSnapshot> _leaderboard = [];
+    private double _bestOneRm;
+    private double _currentPeak;
+
+    protected override string StorageKey => "hevyAnalyzer.filters.strength";
+    protected override ExerciseSelectionFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var rows = HevyAnalytics.FilterRows(AllRows, Filters);
+        _exerciseOptions = HevyAnalytics.GetExerciseStats(rows).Select(item => item.Name).ToList();
+        if (!_exerciseOptions.Contains(Filters.Exercise))
+        {
+            Filters.Exercise = _exerciseOptions.FirstOrDefault() ?? string.Empty;
+        }
+
+        _progress = string.IsNullOrWhiteSpace(Filters.Exercise) ? [] : HevyAnalytics.GetExerciseOneRepMaxProgress(rows, Filters.Exercise);
+        _repRanges = HevyAnalytics.GetExerciseRepRangeProfile(rows, Filters.Exercise);
+        _rpeProfile = HevyAnalytics.GetExerciseRpeProfile(rows, Filters.Exercise);
+        _leaderboard = HevyAnalytics.GetTopEstimatedOneRepMax(rows);
+        _bestOneRm = _progress.Select(item => item.EstimatedOneRepMax).DefaultIfEmpty(0).Max();
+        _currentPeak = _progress.LastOrDefault()?.EstimatedOneRepMax ?? 0;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnFromChanged(DateTime? value) { Filters.From = value; await PersistAndReloadAsync(); }
+    private async Task OnToChanged(DateTime? value) { Filters.To = value; await PersistAndReloadAsync(); }
+    private async Task OnTitleChanged(string value) { Filters.Title = value; await PersistAndReloadAsync(); }
+    private async Task OnExerciseChanged(string value) { Filters.Exercise = value; await PersistAndReloadAsync(); }
+}

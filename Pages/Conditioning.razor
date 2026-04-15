@@ -1,0 +1,116 @@
+@page "/conditioning"
+@inherits HevyPageBase<DateTitleFilters>
+
+<PageTitle>Conditioning</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Conditioning</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="From" Date="@Filters.From" DateChanged="OnFromChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="To" Date="@Filters.To" DateChanged="OnToChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end"><MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Cardio Distance" Value="@($"{_cardioSummary.TotalDistance:F1} km")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Cardio Duration" Value="@($"{Math.Round(_cardioSummary.TotalDurationMin)} min")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Superset Groups" Value="@_supersetSummary.TotalGroups.ToString()" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Superset Sets" Value="@_supersetSummary.TotalSupersetSets.ToString()" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Weekly Cardio</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Week</th><th>Distance</th><th>Duration</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _weeklyCardio)
+                        {
+                            <tr><td>@item.Week</td><td>@item.Distance.ToString("F1") km</td><td>@Math.Round(item.DurationMin) min</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Top Cardio Movements</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Exercise</th><th>Distance</th><th>Duration</th><th>Entries</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _cardioExercises.Take(10))
+                        {
+                            <tr><td>@item.Exercise</td><td>@item.TotalDistance.ToString("F1") km</td><td>@Math.Round(item.TotalDurationMin) min</td><td>@item.Entries</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Common Superset Pairings</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>Pair</th><th>Count</th></tr></thead>
+            <tbody>
+                @foreach (var item in _supersetSummary.MostCommonPairs)
+                {
+                    <tr><td>@item.Pair</td><td>@item.Count</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private CardioSummary _cardioSummary = new();
+    private SupersetSummary _supersetSummary = new();
+    private IReadOnlyList<(string Week, double Distance, double DurationMin)> _weeklyCardio = [];
+    private IReadOnlyList<CardioExerciseSummary> _cardioExercises = [];
+
+    protected override string StorageKey => "hevyAnalyzer.filters.conditioning";
+    protected override DateTitleFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var rows = HevyAnalytics.FilterRows(AllRows, Filters);
+        _cardioSummary = HevyAnalytics.GetCardioSummary(rows);
+        _supersetSummary = HevyAnalytics.GetSupersetSummary(rows);
+        _weeklyCardio = HevyAnalytics.GetWeeklyCardio(rows);
+        _cardioExercises = HevyAnalytics.GetCardioExerciseStats(rows);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnFromChanged(DateTime? value) { Filters.From = value; await PersistAndReloadAsync(); }
+    private async Task OnToChanged(DateTime? value) { Filters.To = value; await PersistAndReloadAsync(); }
+    private async Task OnTitleChanged(string value) { Filters.Title = value; await PersistAndReloadAsync(); }
+}

@@ -1,0 +1,163 @@
+@page "/analysis"
+@inherits HevyPageBase<AnalysisFilters>
+
+<PageTitle>Analysis</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Analysis</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" Label="Exercise" Value="@Filters.Exercise" ValueChanged="OnExerciseChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All exercises</MudSelectItem>
+                    @foreach (var exercise in _exerciseOptions)
+                    {
+                        <MudSelectItem T="string" Value="@exercise">@exercise</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2">
+                <MudSelect T="int" Label="Window" Value="@Filters.WindowDays" ValueChanged="OnWindowChanged">
+                    <MudSelectItem T="int" Value="30">Last 30 days</MudSelectItem>
+                    <MudSelectItem T="int" Value="60">Last 60 days</MudSelectItem>
+                    <MudSelectItem T="int" Value="90">Last 90 days</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end"><MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Workouts" Value="@_comparison.Current.Workouts.ToString()" Subtitle="@($"{HevyAnalytics.FormatDelta(_comparison.Current.Workouts, _comparison.Previous.Workouts)} vs previous")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Total Volume" Value="@($"{HevyAnalytics.FormatNumber(_comparison.Current.TotalVolume)} kg")" Subtitle="@($"{HevyAnalytics.FormatDelta(_comparison.Current.TotalVolume, _comparison.Previous.TotalVolume)} vs previous")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Avg Duration" Value="@($"{Math.Round(_comparison.Current.AvgDuration)} min")" Subtitle="@($"{HevyAnalytics.FormatDelta(_comparison.Current.AvgDuration, _comparison.Previous.AvgDuration)} vs previous")" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><StatCard Label="Peak Est. 1RM" Value="@($"{HevyAnalytics.FormatNumber(_comparison.Current.PeakEstimatedOneRepMax)} kg")" Subtitle="@($"{HevyAnalytics.FormatDelta(_comparison.Current.PeakEstimatedOneRepMax, _comparison.Previous.PeakEstimatedOneRepMax)} vs previous")" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Weekly Load</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Week</th><th>Volume</th><th>Workouts</th><th>Sets</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _weeklyLoad)
+                        {
+                            <tr><td>@item.Week</td><td>@HevyAnalytics.FormatNumber(item.TotalVolume) kg</td><td>@item.Workouts</td><td>@item.TotalSets</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="6">
+            <MudPaper Class="content-panel" Variant="Variant.Outlined">
+                <MudText Typo="Typo.h6" GutterBottom="true">Exercise Momentum</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead><tr><th>Exercise</th><th>Recent Best</th><th>Previous Best</th><th>Change</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _momentum.Take(10))
+                        {
+                            <tr><td>@item.Exercise</td><td>@HevyAnalytics.FormatNumber(item.RecentBest) kg</td><td>@HevyAnalytics.FormatNumber(item.PreviousBest) kg</td><td>@HevyAnalytics.FormatPercent(item.Delta)</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Recovery Warnings</MudText>
+        @if (_warnings.Count == 0)
+        {
+            <MudAlert Severity="Severity.Success">No major recovery flags were detected in the current window.</MudAlert>
+        }
+        else
+        {
+            @foreach (var warning in _warnings)
+            {
+                <MudAlert Severity="@(warning.Severity == "high" ? Severity.Error : Severity.Warning)" Class="mb-2">
+                    <strong>@warning.Title:</strong> @warning.Detail
+                </MudAlert>
+            }
+        }
+    </MudPaper>
+
+    <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+        <MudText Typo="Typo.h6" GutterBottom="true">Plateau Watch</MudText>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>Exercise</th><th>Recent Best</th><th>Previous Best</th><th>Change</th><th>Days Since Improvement</th></tr></thead>
+            <tbody>
+                @foreach (var item in _plateaus.Take(12))
+                {
+                    <tr><td>@item.Exercise</td><td>@HevyAnalytics.FormatNumber(item.RecentBest) kg</td><td>@HevyAnalytics.FormatNumber(item.PreviousBest) kg</td><td>@HevyAnalytics.FormatPercent(item.Delta)</td><td>@(item.DaysSinceImprovement?.ToString() ?? "-")</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private IReadOnlyList<string> _exerciseOptions = [];
+    private PeriodComparison _comparison = new();
+    private IReadOnlyList<(string Week, double TotalVolume, int Workouts, int TotalSets, double? AvgRpe)> _weeklyLoad = [];
+    private IReadOnlyList<ExerciseMomentum> _momentum = [];
+    private IReadOnlyList<ExerciseMomentum> _plateaus = [];
+    private IReadOnlyList<RecoveryWarning> _warnings = [];
+
+    protected override string StorageKey => "hevyAnalyzer.filters.analysis";
+    protected override AnalysisFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var splitRows = string.IsNullOrWhiteSpace(Filters.Title)
+            ? AllRows
+            : AllRows.Where(row => string.Equals(HevyAnalytics.GetDisplayTitle(row.Title), Filters.Title, StringComparison.Ordinal)).ToList();
+
+        _exerciseOptions = HevyAnalytics.GetExerciseStats(splitRows).Select(item => item.Name).ToList();
+        if (!string.IsNullOrWhiteSpace(Filters.Exercise) && !_exerciseOptions.Contains(Filters.Exercise))
+        {
+            Filters.Exercise = string.Empty;
+        }
+
+        var scopedRows = string.IsNullOrWhiteSpace(Filters.Exercise)
+            ? splitRows
+            : splitRows.Where(row => string.Equals(row.Exercise, Filters.Exercise, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        _comparison = HevyAnalytics.GetPeriodComparison(scopedRows, Filters.WindowDays);
+        _weeklyLoad = HevyAnalytics.GetWeeklyLoad(scopedRows);
+        _momentum = HevyAnalytics.GetExerciseMomentum(scopedRows, Filters.WindowDays, 2);
+        _plateaus = HevyAnalytics.GetExercisePlateaus(scopedRows, Filters.WindowDays, 0.01, 3);
+        _warnings = HevyAnalytics.GetRecoveryWarnings(scopedRows, Filters.WindowDays);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnTitleChanged(string value) { Filters.Title = value; Filters.Exercise = string.Empty; await PersistAndReloadAsync(); }
+    private async Task OnExerciseChanged(string value) { Filters.Exercise = value; await PersistAndReloadAsync(); }
+    private async Task OnWindowChanged(int value) { Filters.WindowDays = value; await PersistAndReloadAsync(); }
+}

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Hevy Analyzer</title>
+    <script>
+        (function () {
+            var parts = window.location.pathname.split('/').filter(Boolean);
+            var repo = parts.length > 0 ? '/' + parts[0] : '';
+            var remainder = parts.length > 1 ? '/' + parts.slice(1).join('/') : '/';
+            var redirect = repo + '/?p=' + encodeURIComponent(remainder) + '&q=' + encodeURIComponent(window.location.search.slice(1)) + window.location.hash;
+            window.location.replace(redirect);
+        })();
+    </script>
+</head>
+<body></body>
+</html>

@@ -1,0 +1,110 @@
+@page "/exercises"
+@inherits HevyPageBase<ExerciseFilters>
+
+<PageTitle>Exercises</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Exercises</MudText>
+
+@if (IsLoading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!HasData)
+{
+    <MudAlert Severity="Severity.Info">@ErrorMessage</MudAlert>
+}
+else
+{
+    <MudPaper Class="filter-panel" Variant="Variant.Outlined">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="From" Date="@Filters.From" DateChanged="OnFromChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudDatePicker Label="To" Date="@Filters.To" DateChanged="OnToChanged" /></MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="string" Label="Workout Split" Value="@Filters.Title" ValueChanged="OnTitleChanged">
+                    <MudSelectItem T="string" Value="@string.Empty">All splits</MudSelectItem>
+                    @foreach (var title in _titleOptions)
+                    {
+                        <MudSelectItem T="string" Value="@title">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3"><MudTextField T="string" Label="Search" Value="@Filters.Search" ValueChanged="OnSearchChanged" Immediate="true" /></MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudTable T="ExerciseSummary" Items="_visibleExercises" Dense="true" Hover="true" Class="mt-4" OnRowClick="OnRowClick">
+        <HeaderContent>
+            <MudTh>Exercise</MudTh>
+            <MudTh>Sessions</MudTh>
+            <MudTh>Sets</MudTh>
+            <MudTh>Volume</MudTh>
+            <MudTh>Max Weight</MudTh>
+            <MudTh>Best Set</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.SessionCount</MudTd>
+            <MudTd>@context.TotalSets</MudTd>
+            <MudTd>@HevyAnalytics.FormatNumber(context.TotalVolume) kg</MudTd>
+            <MudTd>@HevyAnalytics.FormatNumber(context.MaxWeight) kg</MudTd>
+            <MudTd>@(context.BestSet is null ? "-" : $"{HevyAnalytics.FormatNumber(context.BestSet.Weight)}kg x {context.BestSet.Reps}")</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (_selectedProgress.Count > 0)
+    {
+        <MudPaper Class="content-panel mt-4" Variant="Variant.Outlined">
+            <MudText Typo="Typo.h6" GutterBottom="true">@Filters.SelectedExercise Progress</MudText>
+            <MudSimpleTable Dense="true">
+                <thead><tr><th>Date</th><th>Top Weight</th><th>Reps</th></tr></thead>
+                <tbody>
+                    @foreach (var point in _selectedProgress)
+                    {
+                        <tr><td>@point.Date.ToShortDateString()</td><td>@HevyAnalytics.FormatNumber(point.Weight) kg</td><td>@point.Reps</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    private IReadOnlyList<string> _titleOptions = [];
+    private IReadOnlyList<ExerciseSummary> _visibleExercises = [];
+    private IReadOnlyList<ProgressPoint> _selectedProgress = [];
+
+    protected override string StorageKey => "hevyAnalyzer.filters.exercises";
+    protected override ExerciseFilters DefaultFilters => new();
+
+    protected override Task OnRowsLoadedAsync()
+    {
+        _titleOptions = HevyAnalytics.GetWorkoutTitleOptions(AllRows);
+        if (!string.IsNullOrWhiteSpace(Filters.Title) && !_titleOptions.Contains(Filters.Title))
+        {
+            Filters.Title = string.Empty;
+        }
+
+        var rows = HevyAnalytics.FilterRows(AllRows, Filters);
+        var exercises = HevyAnalytics.GetExerciseStats(rows);
+        _visibleExercises = exercises.Where(item => item.Name.Contains(Filters.Search, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (!_visibleExercises.Any(item => string.Equals(item.Name, Filters.SelectedExercise, StringComparison.OrdinalIgnoreCase)))
+        {
+            Filters.SelectedExercise = string.Empty;
+        }
+
+        _selectedProgress = string.IsNullOrWhiteSpace(Filters.SelectedExercise) ? [] : HevyAnalytics.GetExerciseProgress(rows, Filters.SelectedExercise);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnFromChanged(DateTime? value) { Filters.From = value; Filters.SelectedExercise = string.Empty; await PersistAndReloadAsync(); }
+    private async Task OnToChanged(DateTime? value) { Filters.To = value; Filters.SelectedExercise = string.Empty; await PersistAndReloadAsync(); }
+    private async Task OnTitleChanged(string value) { Filters.Title = value; Filters.SelectedExercise = string.Empty; await PersistAndReloadAsync(); }
+    private async Task OnSearchChanged(string value) { Filters.Search = value; Filters.SelectedExercise = string.Empty; await PersistAndReloadAsync(); }
+
+    private async Task OnRowClick(TableRowClickEventArgs<ExerciseSummary> args)
+    {
+        Filters.SelectedExercise = args.Item?.Name ?? string.Empty;
+        await PersistAndReloadAsync();
+    }
+}

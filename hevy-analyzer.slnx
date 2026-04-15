@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="HevyAnalyzer.csproj">
+    <Property Name="StartupProject" Value="true" />
+  </Project>
+</Solution>

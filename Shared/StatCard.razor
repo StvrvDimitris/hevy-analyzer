@@ -1,0 +1,14 @@
+<MudPaper Class="stat-card" Variant="Variant.Outlined">
+    <MudText Typo="Typo.overline" Class="stat-label">@Label</MudText>
+    <MudText Typo="Typo.h5">@Value</MudText>
+    @if (!string.IsNullOrWhiteSpace(Subtitle))
+    {
+        <MudText Typo="Typo.caption" Class="stat-subtitle">@Subtitle</MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+}
