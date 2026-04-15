@@ -260,6 +260,127 @@ export function getExerciseProgress(data, exerciseName) {
   return [...map.values()].sort((a, b) => a.date - b.date);
 }
 
+export function getExerciseRecords(data, exerciseName = '') {
+  const records = new Map();
+  const sessionMap = new Map();
+
+  for (const row of data) {
+    if (row.setType !== 'normal' || !row.exercise) continue;
+    if (exerciseName && row.exercise !== exerciseName) continue;
+
+    if (!records.has(row.exercise)) {
+      records.set(row.exercise, {
+        exercise: row.exercise,
+        heaviestSet: { weight: 0, reps: 0, date: null, title: '' },
+        bestEstimatedOneRepMax: { estimated: 0, weight: 0, reps: 0, date: null, title: '' },
+        bestRepSet: { weight: 0, reps: 0, date: null, title: '' },
+        bestSessionVolume: { totalVolume: 0, totalSets: 0, date: null, title: '' },
+        totalSessions: 0,
+        totalSets: 0,
+      });
+    }
+
+    const item = records.get(row.exercise);
+    item.totalSets++;
+
+    if (
+      row.weight > item.heaviestSet.weight
+      || (row.weight === item.heaviestSet.weight && row.reps > item.heaviestSet.reps)
+    ) {
+      item.heaviestSet = {
+        weight: row.weight,
+        reps: row.reps,
+        date: row.start,
+        title: getDisplayTitle(row.title),
+      };
+    }
+
+    const estimated = estimateOneRepMax(row.weight, row.reps);
+    if (estimated > item.bestEstimatedOneRepMax.estimated) {
+      item.bestEstimatedOneRepMax = {
+        estimated,
+        weight: row.weight,
+        reps: row.reps,
+        date: row.start,
+        title: getDisplayTitle(row.title),
+      };
+    }
+
+    if (
+      row.reps > item.bestRepSet.reps
+      || (row.reps === item.bestRepSet.reps && row.weight > item.bestRepSet.weight)
+    ) {
+      item.bestRepSet = {
+        weight: row.weight,
+        reps: row.reps,
+        date: row.start,
+        title: getDisplayTitle(row.title),
+      };
+    }
+
+    const sessionKey = `${row.exercise}::${row.start?.getTime() ?? 'na'}`;
+    if (!sessionMap.has(sessionKey)) {
+      sessionMap.set(sessionKey, {
+        exercise: row.exercise,
+        title: getDisplayTitle(row.title),
+        date: row.start,
+        totalVolume: 0,
+        totalSets: 0,
+      });
+    }
+
+    const session = sessionMap.get(sessionKey);
+    session.totalVolume += row.weight * row.reps;
+    session.totalSets++;
+  }
+
+  for (const session of sessionMap.values()) {
+    const item = records.get(session.exercise);
+    if (!item) continue;
+
+    item.totalSessions++;
+    if (session.totalVolume > item.bestSessionVolume.totalVolume) {
+      item.bestSessionVolume = {
+        totalVolume: session.totalVolume,
+        totalSets: session.totalSets,
+        date: session.date,
+        title: session.title,
+      };
+    }
+  }
+
+  return [...records.values()].sort((a, b) => {
+    const estimatedDelta = b.bestEstimatedOneRepMax.estimated - a.bestEstimatedOneRepMax.estimated;
+    if (estimatedDelta !== 0) return estimatedDelta;
+    return b.heaviestSet.weight - a.heaviestSet.weight;
+  });
+}
+
+export function getExerciseRecordProgress(data, exerciseName) {
+  const map = new Map();
+
+  for (const row of data) {
+    if (row.exercise !== exerciseName || row.setType !== 'normal' || !row.start) continue;
+
+    const key = row.start.toDateString();
+    if (!map.has(key)) {
+      map.set(key, {
+        date: row.start,
+        topWeight: 0,
+        estimatedOneRepMax: 0,
+        totalVolume: 0,
+      });
+    }
+
+    const item = map.get(key);
+    item.topWeight = Math.max(item.topWeight, row.weight || 0);
+    item.estimatedOneRepMax = Math.max(item.estimatedOneRepMax, estimateOneRepMax(row.weight, row.reps));
+    item.totalVolume += row.weight * row.reps;
+  }
+
+  return [...map.values()].sort((a, b) => a.date - b.date);
+}
+
 export function getRpeDistribution(data) {
   const counts = {};
   for (const row of data) {
@@ -642,6 +763,218 @@ export function getSupersetSummary(data) {
   };
 }
 
+export function getPeriodComparison(data, days = 30) {
+  const workouts = getWorkouts(data).filter(workout => workout.start);
+  if (!workouts.length) {
+    return {
+      days,
+      latestDate: null,
+      current: getPeriodMetrics([]),
+      previous: getPeriodMetrics([]),
+    };
+  }
+
+  const latestDate = workouts[0].start;
+  const currentStart = shiftDays(startOfDate(latestDate), -(days - 1));
+  const previousStart = shiftDays(currentStart, -days);
+
+  const currentRows = data.filter(row => row.start && row.start >= currentStart);
+  const previousRows = data.filter(row => row.start && row.start >= previousStart && row.start < currentStart);
+
+  return {
+    days,
+    latestDate,
+    currentStart,
+    previousStart,
+    current: getPeriodMetrics(currentRows),
+    previous: getPeriodMetrics(previousRows),
+  };
+}
+
+export function getWeeklyLoad(data) {
+  const map = new Map();
+
+  for (const session of getSessionStats(data)) {
+    if (!session.start) continue;
+
+    const weekStart = getWeekStart(session.start);
+    const key = weekStart.toISOString().slice(0, 10);
+    if (!map.has(key)) {
+      map.set(key, {
+        week: key,
+        totalVolume: 0,
+        workouts: 0,
+        totalSets: 0,
+        totalRpe: 0,
+        rpeCount: 0,
+      });
+    }
+
+    const item = map.get(key);
+    item.totalVolume += session.totalVolume;
+    item.workouts++;
+    item.totalSets += session.totalSets;
+    if (session.avgRpe != null) {
+      item.totalRpe += session.avgRpe;
+      item.rpeCount++;
+    }
+  }
+
+  return [...map.values()]
+    .sort((a, b) => a.week.localeCompare(b.week))
+    .map(item => ({
+      week: item.week,
+      totalVolume: item.totalVolume,
+      workouts: item.workouts,
+      totalSets: item.totalSets,
+      avgRpe: item.rpeCount ? item.totalRpe / item.rpeCount : null,
+    }));
+}
+
+export function getExerciseMomentum(data, days = 30, minSessions = 2) {
+  const workouts = getWorkouts(data).filter(workout => workout.start);
+  if (!workouts.length) return [];
+
+  const latestDate = workouts[0].start;
+  const currentStart = shiftDays(startOfDate(latestDate), -(days - 1));
+  const previousStart = shiftDays(currentStart, -days);
+  const records = getExerciseRecords(data);
+
+  return records
+    .map(record => {
+      const progress = getExerciseOneRepMaxProgress(data, record.exercise);
+      const recent = progress.filter(item => item.date >= currentStart);
+      const previous = progress.filter(item => item.date >= previousStart && item.date < currentStart);
+      const recentBest = recent.reduce((best, item) => Math.max(best, item.estimatedOneRepMax), 0);
+      const previousBest = previous.reduce((best, item) => Math.max(best, item.estimatedOneRepMax), 0);
+      const delta = previousBest > 0 ? (recentBest - previousBest) / previousBest : null;
+      const lastImprovementDate = getLastImprovementDate(progress);
+
+      return {
+        exercise: record.exercise,
+        recentSessions: recent.length,
+        previousSessions: previous.length,
+        recentBest,
+        previousBest,
+        delta,
+        lastImprovementDate,
+        daysSinceImprovement: lastImprovementDate && latestDate
+          ? Math.round((startOfDate(latestDate) - startOfDate(lastImprovementDate)) / 86400000)
+          : null,
+      };
+    })
+    .filter(item => item.recentSessions >= minSessions || item.previousSessions >= minSessions)
+    .sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity));
+}
+
+export function getExercisePlateaus(data, options = {}) {
+  const days = options.days || 30;
+  const threshold = options.threshold ?? 0.01;
+  const minSessions = options.minSessions || 3;
+
+  return getExerciseMomentum(data, days, minSessions)
+    .filter(item => item.previousSessions >= minSessions && item.recentSessions >= minSessions)
+    .filter(item => item.delta != null && item.delta <= threshold)
+    .sort((a, b) => {
+      const stallDelta = (a.delta ?? 0) - (b.delta ?? 0);
+      if (stallDelta !== 0) return stallDelta;
+      return (b.daysSinceImprovement ?? 0) - (a.daysSinceImprovement ?? 0);
+    });
+}
+
+export function getRecoveryWarnings(data, options = {}) {
+  const days = options.days || 30;
+  const sessions = getSessionStats(data)
+    .filter(session => session.start)
+    .slice()
+    .sort((a, b) => a.start - b.start);
+
+  if (!sessions.length) return [];
+
+  const latestDate = sessions[sessions.length - 1].start;
+  const recentStart = shiftDays(startOfDate(latestDate), -(days - 1));
+  const recentSessions = sessions.filter(session => session.start >= recentStart);
+  const warnings = [];
+
+  const highRpeStreaks = [];
+  let currentStreak = [];
+  for (const session of recentSessions) {
+    if ((session.avgRpe ?? 0) >= 8.5) {
+      currentStreak.push(session);
+    } else if (currentStreak.length) {
+      highRpeStreaks.push(currentStreak);
+      currentStreak = [];
+    }
+  }
+  if (currentStreak.length) highRpeStreaks.push(currentStreak);
+
+  const longestHighRpeStreak = highRpeStreaks.sort((a, b) => b.length - a.length)[0];
+  if (longestHighRpeStreak?.length >= 2) {
+    warnings.push({
+      severity: longestHighRpeStreak.length >= 3 ? 'high' : 'medium',
+      title: 'Back-to-back high RPE sessions',
+      detail: `${longestHighRpeStreak.length} sessions averaged 8.5+ RPE between ${longestHighRpeStreak[0].start.toLocaleDateString()} and ${longestHighRpeStreak[longestHighRpeStreak.length - 1].start.toLocaleDateString()}.`,
+      score: longestHighRpeStreak.length >= 3 ? 30 : 20,
+    });
+  }
+
+  let biggestSpike = null;
+  for (let index = 4; index < recentSessions.length; index++) {
+    const previous = recentSessions.slice(index - 4, index);
+    const baseline = previous.reduce((sum, item) => sum + item.totalVolume, 0) / previous.length;
+    const current = recentSessions[index];
+    if (baseline > 0 && current.totalVolume > baseline * 1.25) {
+      const spike = {
+        session: current,
+        ratio: current.totalVolume / baseline,
+        baseline,
+      };
+      if (!biggestSpike || spike.ratio > biggestSpike.ratio) {
+        biggestSpike = spike;
+      }
+    }
+  }
+
+  if (biggestSpike) {
+    warnings.push({
+      severity: biggestSpike.ratio >= 1.5 ? 'high' : 'medium',
+      title: 'Acute volume spike',
+      detail: `${biggestSpike.session.start.toLocaleDateString()} jumped to ${fmt(biggestSpike.session.totalVolume)} kg, ${Math.round((biggestSpike.ratio - 1) * 100)}% above the prior 4-session average.`,
+      score: biggestSpike.ratio >= 1.5 ? 28 : 18,
+    });
+  }
+
+  const longThreshold = Math.max(90, percentile(recentSessions.map(session => session.durationMin), 0.85));
+  const longSessions = recentSessions.filter(session => session.durationMin >= longThreshold);
+  if (longSessions.length >= 2) {
+    warnings.push({
+      severity: 'medium',
+      title: 'Multiple unusually long sessions',
+      detail: `${longSessions.length} sessions in the last ${days} days ran ${Math.round(longThreshold)}+ minutes.`,
+      score: 16,
+    });
+  }
+
+  const denseHardBlock = recentSessions.filter(session => {
+    const sessionDay = startOfDate(session.start);
+    const blockStart = shiftDays(sessionDay, -4);
+    const blockSessions = recentSessions.filter(item => item.start >= blockStart && item.start <= sessionDay);
+    const hardSessions = blockSessions.filter(item => (item.avgRpe ?? 0) >= 8 || item.durationMin >= longThreshold);
+    return hardSessions.length >= 3;
+  })[0];
+
+  if (denseHardBlock) {
+    warnings.push({
+      severity: 'high',
+      title: 'Hard sessions are clustering',
+      detail: `At least 3 hard or long sessions landed within 5 days by ${denseHardBlock.start.toLocaleDateString()}.`,
+      score: 26,
+    });
+  }
+
+  return warnings.sort((a, b) => b.score - a.score);
+}
+
 export function applyChartDefaults() {
   Chart.defaults.color = '#8b8fa3';
   Chart.defaults.borderColor = '#2a2e3d';
@@ -650,4 +983,61 @@ export function applyChartDefaults() {
 
 export function fmt(n) {
   return Math.round(n).toLocaleString();
+}
+
+function getPeriodMetrics(rows) {
+  const sessions = getSessionStats(rows);
+  const totalAvgRpe = sessions.reduce((sum, session) => sum + (session.avgRpe || 0), 0);
+  const rpeCount = sessions.filter(session => session.avgRpe != null).length;
+
+  return {
+    workouts: sessions.length,
+    activeDays: new Set(sessions.map(session => session.start?.toISOString().slice(0, 10)).filter(Boolean)).size,
+    totalSets: sessions.reduce((sum, session) => sum + session.totalSets, 0),
+    totalVolume: sessions.reduce((sum, session) => sum + session.totalVolume, 0),
+    avgDuration: sessions.length ? sessions.reduce((sum, session) => sum + session.durationMin, 0) / sessions.length : 0,
+    avgSetsPerWorkout: sessions.length ? sessions.reduce((sum, session) => sum + session.totalSets, 0) / sessions.length : 0,
+    avgRpe: rpeCount ? totalAvgRpe / rpeCount : null,
+    cardioDistance: sessions.reduce((sum, session) => sum + session.cardioDistance, 0),
+    cardioDurationMin: sessions.reduce((sum, session) => sum + session.cardioDurationMin, 0),
+    peakEstimatedOneRepMax: sessions.reduce((best, session) => Math.max(best, session.peakEstimatedOneRepMax), 0),
+  };
+}
+
+function getLastImprovementDate(progress) {
+  let best = 0;
+  let lastImprovementDate = null;
+
+  for (const item of progress) {
+    if (item.estimatedOneRepMax > best) {
+      best = item.estimatedOneRepMax;
+      lastImprovementDate = item.date;
+    }
+  }
+
+  return lastImprovementDate;
+}
+
+function startOfDate(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function shiftDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function getWeekStart(date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  value.setDate(value.getDate() - value.getDay());
+  return value;
+}
+
+function percentile(values, ratio) {
+  const sorted = values.filter(value => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * ratio)));
+  return sorted[index];
 }

@@ -315,6 +315,11 @@ input:focus, select:focus {
   background: var(--accent-glow);
 }
 
+.empty-note {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .heatmap {
   display: grid;
   grid-template-columns: repeat(18, 1fr);
@@ -345,6 +350,39 @@ input:focus, select:focus {
 .empty-state p {
   color: var(--text-secondary);
   line-height: 1.6;
+}
+
+.warning-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.warning-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--bg-primary);
+}
+
+.warning-high {
+  border-color: rgba(255, 107, 107, 0.55);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.warning-medium {
+  border-color: rgba(253, 203, 110, 0.55);
+  background: rgba(253, 203, 110, 0.08);
+}
+
+.warning-clear {
+  border-color: rgba(0, 206, 201, 0.45);
+  background: rgba(0, 206, 201, 0.08);
+}
+
+.warning-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
 }
 
 /* Mobile nav */

@@ -9,6 +9,8 @@ const pages = [
   { href: 'sessions.html', label: 'Sessions', icon: '<path d="M8 7V3m8 4V3M5 11h14"/><rect x="3" y="5" width="18" height="16" rx="2"/>' },
   { href: 'consistency.html', label: 'Consistency', icon: '<path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/>' },
   { href: 'conditioning.html', label: 'Conditioning', icon: '<path d="M20 12a8 8 0 10-8 8"/><path d="M12 12l5-3"/>' },
+  { href: 'records.html', label: 'Records', icon: '<path d="M12 15l-3.5 2 1-4-3-2.5 4.2-.3L12 6l1.8 4.2 4.2.3-3 2.5 1 4z"/>' },
+  { href: 'analysis.html', label: 'Analysis', icon: '<path d="M4 19h16"/><path d="M7 16V8"/><path d="M12 16V5"/><path d="M17 16v-3"/>' },
 ];
 
 export function renderNav() {
