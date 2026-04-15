@@ -8,9 +8,11 @@ import {
   getWorkoutTitleOptions,
   getWorkouts,
   loadData,
+  loadPageFilters,
   MissingDataError,
   renderDataState,
   renderNoResultsState,
+  savePageFilters,
 } from './data.js';
 import { renderNav } from './nav.js';
 
@@ -18,16 +20,22 @@ renderNav();
 applyChartDefaults();
 
 const app = document.getElementById('app');
-const filters = {
+const defaultFilters = {
   from: '',
   to: '',
   title: '',
 };
+const filters = loadPageFilters('dashboard', defaultFilters);
 
 async function renderPage() {
   try {
     const data = await loadData();
     const titleOptions = getWorkoutTitleOptions(data);
+    if (filters.title && !titleOptions.includes(filters.title)) {
+      filters.title = '';
+    }
+    persistFilters();
+
     const filteredRows = filterRows(data, filters);
     const workouts = getWorkouts(filteredRows);
     const weeklyVol = getWeeklyVolume(filteredRows);
@@ -189,25 +197,31 @@ async function renderPage() {
 function bindFilterControls() {
   document.getElementById('filter-from').addEventListener('change', event => {
     filters.from = event.target.value;
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('filter-to').addEventListener('change', event => {
     filters.to = event.target.value;
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('filter-title').addEventListener('change', event => {
     filters.title = event.target.value;
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('reset-filters').addEventListener('click', () => {
-    filters.from = '';
-    filters.to = '';
-    filters.title = '';
+    Object.assign(filters, defaultFilters);
+    persistFilters();
     renderPage();
   });
+}
+
+function persistFilters() {
+  savePageFilters('dashboard', filters);
 }
 
 renderPage();

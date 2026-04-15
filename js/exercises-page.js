@@ -6,9 +6,11 @@ import {
   getExerciseStats,
   getWorkoutTitleOptions,
   loadData,
+  loadPageFilters,
   MissingDataError,
   renderDataState,
   renderNoResultsState,
+  savePageFilters,
 } from './data.js';
 import { renderNav } from './nav.js';
 
@@ -16,18 +18,23 @@ renderNav();
 applyChartDefaults();
 
 const app = document.getElementById('app');
-const filters = {
+const defaultFilters = {
   from: '',
   to: '',
   title: '',
   search: '',
   selectedExercise: '',
 };
+const filters = loadPageFilters('exercises', defaultFilters);
 
 async function renderPage() {
   try {
     const data = await loadData();
     const titleOptions = getWorkoutTitleOptions(data);
+    if (filters.title && !titleOptions.includes(filters.title)) {
+      filters.title = '';
+    }
+
     const filteredRows = filterRows(data, filters);
     const exercises = getExerciseStats(filteredRows);
     const visibleExercises = exercises.filter(exercise => exercise.name.toLowerCase().includes(filters.search.toLowerCase()));
@@ -35,6 +42,7 @@ async function renderPage() {
     if (!visibleExercises.some(exercise => exercise.name === filters.selectedExercise)) {
       filters.selectedExercise = '';
     }
+    persistFilters();
 
     app.innerHTML = `
       <div class="page-header">
@@ -114,6 +122,7 @@ async function renderPage() {
       const row = event.target.closest('tr');
       if (!row) return;
       filters.selectedExercise = row.dataset.name;
+      persistFilters();
       renderPage();
     });
 
@@ -159,35 +168,40 @@ function bindFilterControls() {
   document.getElementById('filter-from').addEventListener('change', event => {
     filters.from = event.target.value;
     filters.selectedExercise = '';
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('filter-to').addEventListener('change', event => {
     filters.to = event.target.value;
     filters.selectedExercise = '';
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('filter-title').addEventListener('change', event => {
     filters.title = event.target.value;
     filters.selectedExercise = '';
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('filter-search').addEventListener('input', event => {
     filters.search = event.target.value;
     filters.selectedExercise = '';
+    persistFilters();
     renderPage();
   });
 
   document.getElementById('reset-filters').addEventListener('click', () => {
-    filters.from = '';
-    filters.to = '';
-    filters.title = '';
-    filters.search = '';
-    filters.selectedExercise = '';
+    Object.assign(filters, defaultFilters);
+    persistFilters();
     renderPage();
   });
+}
+
+function persistFilters() {
+  savePageFilters('exercises', filters);
 }
 
 renderPage();

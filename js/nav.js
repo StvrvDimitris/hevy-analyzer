@@ -5,6 +5,10 @@ const pages = [
   { href: 'exercises.html', label: 'Exercises', icon: '<path d="M4 6h16M4 12h16M4 18h7"/>' },
   { href: 'progress.html', label: 'Progress', icon: '<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>' },
   { href: 'frequency.html', label: 'Frequency', icon: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>' },
+  { href: 'strength.html', label: 'Strength', icon: '<path d="M6 6l12 12M18 6L6 18"/><path d="M4 8l4-4M16 20l4-4M20 8l-4-4M8 20l-4-4"/>' },
+  { href: 'sessions.html', label: 'Sessions', icon: '<path d="M8 7V3m8 4V3M5 11h14"/><rect x="3" y="5" width="18" height="16" rx="2"/>' },
+  { href: 'consistency.html', label: 'Consistency', icon: '<path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/>' },
+  { href: 'conditioning.html', label: 'Conditioning', icon: '<path d="M20 12a8 8 0 10-8 8"/><path d="M12 12l5-3"/>' },
 ];
 
 export function renderNav() {

@@ -2,10 +2,12 @@ import {
   applyChartDefaults,
   filterRows,
   fmt,
-  getRpeDistribution,
-  getWeeklyFrequency,
+  getHourDistribution,
+  getWorkoutDayCounts,
+  getWorkoutStreaks,
   getWorkoutTitleOptions,
   getWorkouts,
+  getWeekdayDistribution,
   loadData,
   loadPageFilters,
   MissingDataError,
@@ -24,7 +26,7 @@ const defaultFilters = {
   to: '',
   title: '',
 };
-const filters = loadPageFilters('frequency', defaultFilters);
+const filters = loadPageFilters('consistency', defaultFilters);
 
 async function renderPage() {
   try {
@@ -36,13 +38,15 @@ async function renderPage() {
     persistFilters();
 
     const filteredRows = filterRows(data, filters);
-    const weekly = getWeeklyFrequency(filteredRows);
-    const rpe = getRpeDistribution(filteredRows);
     const workouts = getWorkouts(filteredRows);
+    const streaks = getWorkoutStreaks(filteredRows);
+    const weekday = getWeekdayDistribution(filteredRows);
+    const hours = getHourDistribution(filteredRows);
+    const activity = getWorkoutDayCounts(filteredRows);
 
     app.innerHTML = `
       <div class="page-header">
-        <h1 class="page-title">Workout Frequency</h1>
+        <h1 class="page-title">Consistency Insights</h1>
       </div>
       <div class="filter-bar card">
         <div class="filter-grid">
@@ -66,73 +70,65 @@ async function renderPage() {
           </div>
         </div>
       </div>
-      <div id="frequency-content"></div>
+      <div id="consistency-content"></div>
     `;
 
     bindFilterControls();
 
-    const content = document.getElementById('frequency-content');
+    const content = document.getElementById('consistency-content');
     if (!workouts.length) {
       renderNoResultsState(content, 'No workouts match the current filters.');
       return;
     }
 
-    const monthly = new Map();
-    for (const workout of workouts) {
-      const key = `${workout.start.getFullYear()}-${String(workout.start.getMonth() + 1).padStart(2, '0')}`;
-      monthly.set(key, (monthly.get(key) || 0) + 1);
-    }
-    const monthlyData = [...monthly.entries()].sort(([a], [b]) => a.localeCompare(b));
-
-    const avgPerWeek = weekly.length ? (weekly.reduce((sum, week) => sum + week.count, 0) / weekly.length).toFixed(1) : 0;
-    const maxWeek = weekly.reduce((max, week) => (week.count > max.count ? week : max), { count: 0, week: '' });
-    const totalDays = workouts.length ? Math.round((workouts[0].start - workouts.at(-1).start) / 86400000) : 0;
+    const averagePerWeek = getAveragePerWeek(workouts);
 
     content.innerHTML = `
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="label">Avg / Week</div>
-          <div class="value">${avgPerWeek}</div>
+          <div class="label">Current Streak</div>
+          <div class="value">${streaks.currentStreak}</div>
+          <div class="sub">Consecutive training days</div>
         </div>
         <div class="stat-card">
-          <div class="label">Best Week</div>
-          <div class="value">${maxWeek.count} workouts</div>
-          <div class="sub">${maxWeek.week}</div>
+          <div class="label">Longest Streak</div>
+          <div class="value">${streaks.longestStreak}</div>
+          <div class="sub">Best run in filtered data</div>
         </div>
         <div class="stat-card">
-          <div class="label">Total Days Tracked</div>
-          <div class="value">${fmt(totalDays)}</div>
+          <div class="label">Active Days</div>
+          <div class="value">${streaks.activeDays}</div>
         </div>
         <div class="stat-card">
-          <div class="label">RPE Data Points</div>
-          <div class="value">${fmt(rpe.reduce((sum, item) => sum + item.count, 0))}</div>
+          <div class="label">Average / Week</div>
+          <div class="value">${averagePerWeek.toFixed(1)}</div>
         </div>
-      </div>
-
-      <div class="chart-container">
-        <h3>Workouts Per Month</h3>
-        <canvas id="monthlyChart"></canvas>
       </div>
 
       <div class="chart-row">
         <div class="chart-container">
-          <h3>Workouts Per Week</h3>
-          <canvas id="weeklyChart"></canvas>
+          <h3>Weekday Distribution</h3>
+          <canvas id="weekdayChart"></canvas>
         </div>
         <div class="chart-container">
-          <h3>RPE Distribution</h3>
-          <canvas id="rpeChart"></canvas>
+          <h3>Start Time Distribution</h3>
+          <canvas id="hourChart"></canvas>
         </div>
+      </div>
+
+      <div class="chart-container">
+        <h3>Recent Activity Heatmap</h3>
+        <div class="heatmap" id="heatmap">${renderHeatmap(activity)}</div>
       </div>
     `;
 
-    new Chart(document.getElementById('monthlyChart'), {
+    new Chart(document.getElementById('weekdayChart'), {
       type: 'bar',
       data: {
-        labels: monthlyData.map(([month]) => month),
+        labels: weekday.map(item => item.label),
         datasets: [{
           label: 'Workouts',
-          data: monthlyData.map(([, count]) => count),
+          data: weekday.map(item => item.count),
           backgroundColor: 'rgba(108, 92, 231, 0.6)',
           borderRadius: 4,
         }],
@@ -140,21 +136,18 @@ async function renderPage() {
       options: {
         responsive: true,
         plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { maxTicksLimit: 20 } },
-          y: { beginAtZero: true },
-        },
+        scales: { y: { beginAtZero: true } },
       },
     });
 
-    new Chart(document.getElementById('weeklyChart'), {
+    new Chart(document.getElementById('hourChart'), {
       type: 'bar',
       data: {
-        labels: weekly.map(week => week.week),
+        labels: hours.map(item => `${String(item.hour).padStart(2, '0')}:00`),
         datasets: [{
           label: 'Workouts',
-          data: weekly.map(week => week.count),
-          backgroundColor: 'rgba(0, 206, 201, 0.5)',
+          data: hours.map(item => item.count),
+          backgroundColor: 'rgba(0, 206, 201, 0.55)',
           borderRadius: 2,
         }],
       },
@@ -162,39 +155,18 @@ async function renderPage() {
         responsive: true,
         plugins: { legend: { display: false } },
         scales: {
-          x: { display: false },
-          y: { beginAtZero: true },
-        },
-      },
-    });
-
-    new Chart(document.getElementById('rpeChart'), {
-      type: 'bar',
-      data: {
-        labels: rpe.map(item => item.rpe),
-        datasets: [{
-          label: 'Count',
-          data: rpe.map(item => item.count),
-          backgroundColor: 'rgba(253, 203, 110, 0.6)',
-          borderRadius: 4,
-        }],
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { title: { display: true, text: 'RPE' } },
+          x: { ticks: { maxTicksLimit: 12 } },
           y: { beginAtZero: true },
         },
       },
     });
   } catch (error) {
     if (error instanceof MissingDataError) {
-      renderDataState(app, 'Workout Frequency', 'Import a Hevy CSV from the sidebar to view training frequency and RPE trends.');
+      renderDataState(app, 'Consistency Insights', 'Import a Hevy CSV from the sidebar before opening consistency insights.');
       return;
     }
 
-    renderDataState(app, 'Workout Frequency', error.message || 'The imported CSV could not be loaded.');
+    renderDataState(app, 'Consistency Insights', error.message || 'The imported CSV could not be loaded.');
   }
 }
 
@@ -224,8 +196,33 @@ function bindFilterControls() {
   });
 }
 
+function getAveragePerWeek(workouts) {
+  if (!workouts.length) return 0;
+  const first = workouts[workouts.length - 1].start;
+  const last = workouts[0].start;
+  const weeks = Math.max(1, (last - first) / 604800000);
+  return workouts.length / weeks;
+}
+
+function renderHeatmap(activity) {
+  const days = [];
+  const today = new Date();
+  const current = new Date(today);
+  current.setDate(current.getDate() - 125);
+
+  for (let index = 0; index < 126; index++) {
+    const day = new Date(current);
+    day.setDate(current.getDate() + index);
+    const key = day.toISOString().slice(0, 10);
+    const count = activity[key] || 0;
+    days.push(`<div class="heatmap-cell level-${Math.min(count, 4)}" title="${key}: ${count} workout${count === 1 ? '' : 's'}"></div>`);
+  }
+
+  return days.join('');
+}
+
 function persistFilters() {
-  savePageFilters('frequency', filters);
+  savePageFilters('consistency', filters);
 }
 
 renderPage();
