@@ -23,18 +23,25 @@ jobs:
       - name: Publish
         run: dotnet publish HevyAnalyzer.csproj -c Release -o release
 
+      - name: Find wwwroot
+        run: |
+          INDEX=$(find release -name "index.html" | head -1)
+          WWWROOT=$(dirname "$INDEX")
+          echo "WWWROOT=$WWWROOT" >> "$GITHUB_ENV"
+          echo "Found wwwroot at: $WWWROOT"
+
       - name: Rewrite base href for GitHub Pages
         run: |
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          sed -i "s|<base href=\"/\" />|<base href=\"/${REPO_NAME}/\" />|g" release/wwwroot/index.html
+          sed -i "s|<base href=\"/\" />|<base href=\"/${REPO_NAME}/\" />|g" "$WWWROOT/index.html"
 
-      - name: Ensure SPA fallback mirrors publish shell
-        run: cp release/wwwroot/index.html release/wwwroot/404.html
+      - name: Ensure SPA fallback
+        run: cp "$WWWROOT/index.html" "$WWWROOT/404.html"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: release/wwwroot
+          path: ${{ env.WWWROOT }}
 
   deploy:
     environment:
